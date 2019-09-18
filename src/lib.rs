@@ -63,8 +63,7 @@ impl<'a> Button<'a>{
 
 
 
-
-//make it right to left.
+//Iterates right to left
 pub struct DigitIter<'a>{
     digit_iter:core::iter::Enumerate<core::iter::Rev<digit::DigitIter<'a>>>,
     spacing:f32,
@@ -113,6 +112,75 @@ impl<'a> NumberThing<'a>{
     }
 }
 
+
+pub struct PinDigitIter<'a,'b:'a>{
+    digit_iter:core::iter::Enumerate<core::slice::Iter<'a,Option<digit::Digit<'b>>>>,
+    spacing:f32,
+    digit_spacing:f32,
+    top_left:Vec2<f32>,
+}
+impl<'a,'b:'a> Iterator for PinDigitIter<'a,'b>{
+    type Item=ButtonPosesIter<'a>;
+    fn next(&mut self)->Option<Self::Item>{
+        match self.digit_iter.next(){
+            None=>None,
+            Some((index,Some(digit)))=>{
+                let spacing=self.spacing;
+                let topleft=vec2(self.top_left.x+(index as f32)*self.digit_spacing,self.top_left.y);
+                Some(ButtonPosesIter{poses:digit.get().iter(),topleft,spacing})
+            },
+            _=>{
+                unreachable!()
+            }
+        }
+    }
+}
+
+
+pub enum PinEnterResult{
+    Open,
+    Fail,
+    NotDoneYet
+}
+pub struct PinCode<'a>{
+    key:[u8;4],
+    digits:[Option<digit::Digit<'a>>;4],
+    top_left:Vec2<f32>,
+    digit_spacing:f32,
+    pixel_spacing:f32
+}
+
+impl<'a> PinCode<'a>{
+    pub fn iter(&self)->PinDigitIter{
+        PinDigitIter{
+            digit_iter:self.digits.iter().enumerate(),
+            digit_spacing:self.digit_spacing,
+            top_left:self.top_left,
+            spacing:self.pixel_spacing}
+    }
+    pub fn add(&mut self,digit:u8,table:&'a digit::DigitSymbolTable)->PinEnterResult{
+        for a in self.digits.iter_mut(){
+            if a.is_none(){
+                *a=Some(table.lookup_digit(digit));
+            }
+        }
+
+
+        if !self.digits.iter().all(|a|a.is_some()){
+            return PinEnterResult::NotDoneYet
+        }
+
+        if self.digits.iter().zip(self.key.iter()).all(|(a,b)|a.as_ref().unwrap().num()==*b){
+            PinEnterResult::Open
+        }else{
+            for a in self.digits.iter_mut(){
+                *a=None;
+            }
+            PinEnterResult::Fail
+        }
+
+    }
+}
 
 
 
