@@ -173,7 +173,7 @@ pub struct PinCode{
 
 impl PinCode{
     pub fn new(top_left:Vec2<f32>,digit_spacing:f32,pixel_spacing:f32)->PinCode{
-        PinCode{key:[1,6,1,6],digits:[None,None,None,None],top_left,digit_spacing,pixel_spacing}
+        PinCode{key:[1,6,1,8],digits:[None,None,None,None],top_left,digit_spacing,pixel_spacing}
     }
     pub fn iter<'a>(&'a self,table:&'a DigitSymbolTable)->PinDigitIter<'a>{
         PinDigitIter{
@@ -188,6 +188,7 @@ impl PinCode{
         for a in self.digits.iter_mut(){
             if a.is_none(){
                 *a=Some(digit);
+                break;
             }
         }
 
