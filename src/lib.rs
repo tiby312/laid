@@ -4,6 +4,8 @@ use axgeom::*;
 use ascii_num::*;
 use ascii_num::*;
 
+use ascii_num::digits_iterator::Digits;
+
 
 
 pub struct ButtonPosesIter<'a>{
@@ -31,19 +33,22 @@ impl<'a> Iterator for ButtonPosesIter<'a>{
 }
 
 
-pub struct Button<'a>{
-    poses:symbol::Symbol<'a>,
+pub struct Button{
+    symbol:usize, //TODO use new type.
     dim:axgeom::Rect<f32>,
     padding:axgeom::Rect<f32>,
     spacing:f32
 }
 
-impl<'a> Button<'a>{
+impl Button{
     pub fn get_dim(&self)->&axgeom::Rect<f32>{
         &self.padding
     }
-    pub fn new(topleft:Vec2<f32>,poses:symbol::Symbol<'a>,spacing:f32)->Button{
-        let m=poses.get().iter().fold(vec2same(0), |acc, &v| {vec2(acc.x.max(v.x),acc.y.max(v.y))});
+
+    ///We need to pass the symbol table so that we can figure out the size of the button
+    pub fn new(topleft:Vec2<f32>,symbol:usize,spacing:f32,table:&symbol::SymbolTable)->Button{
+
+        let m=table.lookup(symbol).get().iter().fold(vec2same(0), |acc, &v| {vec2(acc.x.max(v.x),acc.y.max(v.y))});
         
         let dimx=m.x as f32*spacing;
         let dimy=m.y as f32*spacing;
@@ -52,11 +57,13 @@ impl<'a> Button<'a>{
         
         let mut padding=dim;
         padding.grow(spacing*2.0);
-        Button{poses,dim,padding,spacing}
+        Button{symbol,dim,padding,spacing}
     }
-    pub fn iter(&self)->ButtonPosesIter{
+
+    pub fn iter<'a>(&'a self,table:&'a symbol::SymbolTable)->ButtonPosesIter<'a>{
         let topleft=vec2(self.dim.x.left,self.dim.y.left);
-        ButtonPosesIter{poses:self.poses.get().iter(),topleft,spacing:self.spacing}
+        let k=table.lookup(self.symbol);
+        ButtonPosesIter{poses:k.into_inner().iter(),topleft,spacing:self.spacing}
     }
 }
 
@@ -65,7 +72,8 @@ impl<'a> Button<'a>{
 
 //Iterates right to left
 pub struct DigitIter<'a>{
-    digit_iter:core::iter::Enumerate<core::iter::Rev<digit::DigitIter<'a>>>,
+    table:&'a DigitSymbolTable,
+    digit_iter:core::iter::Enumerate<core::iter::Rev<Digits<usize>>>,
     spacing:f32,
     digit_spacing:f32,
     top_right:Vec2<f32>,
@@ -79,33 +87,35 @@ impl<'a> Iterator for DigitIter<'a>{
             Some((index,digit))=>{
                 let spacing=self.spacing;
                 let topleft=vec2(self.top_right.x-(index as f32)*self.digit_spacing,self.top_right.y);
-                Some(ButtonPosesIter{poses:digit.into_inner().iter(),topleft,spacing})
+                let k=self.table.lookup_digit(digit);
+                Some(ButtonPosesIter{poses:k.into_inner().iter(),topleft,spacing})
             }
         }
     }
 }
 
 
-pub struct NumberThing<'a>{
-    number:digit::Number<'a>,
+pub struct NumberThing{
+    number:usize,
     pixel_spacing:f32,
     digit_spacing:f32,
     top_right:Vec2<f32>
 }
 
-impl<'a> NumberThing<'a>{
-    pub fn new(number:digit::Number<'a>,digit_spacing:f32,pixel_spacing:f32,top_right:Vec2<f32>)->NumberThing<'a>{
+impl NumberThing{
+    pub fn new(number:usize,digit_spacing:f32,pixel_spacing:f32,top_right:Vec2<f32>)->NumberThing{
         NumberThing{number,pixel_spacing,digit_spacing,top_right}
     }
     pub fn update_number(&mut self,number:usize){
-        self.number.update_number(number);
+        self.number=number;
     }
     pub fn get_number(&self)->usize{
-        self.number.get_number()
+        self.number
     }
-    pub fn iter(&self)->DigitIter{
+    pub fn iter<'a>(&'a self,table:&'a DigitSymbolTable)->DigitIter<'a>{
         DigitIter{
-            digit_iter:self.number.iter().rev().enumerate(),
+            table,
+            digit_iter:Digits::new(self.number).rev().enumerate(),
             spacing:self.pixel_spacing,
             digit_spacing:self.digit_spacing,
             top_right:self.top_right}
@@ -113,21 +123,32 @@ impl<'a> NumberThing<'a>{
 }
 
 
-pub struct PinDigitIter<'a,'b:'a>{
-    digit_iter:core::iter::Enumerate<core::slice::Iter<'a,Option<digit::Digit<'b>>>>,
+use ascii_num::digit::DigitSymbolTable;
+
+pub struct PinDigitIter<'a>{
+    digit_iter:core::iter::Enumerate<core::slice::Iter<'a,Option<u8>>>,
+    table:&'a DigitSymbolTable,
     spacing:f32,
     digit_spacing:f32,
     top_left:Vec2<f32>,
 }
-impl<'a,'b:'a> Iterator for PinDigitIter<'a,'b>{
+impl<'a> Iterator for PinDigitIter<'a>{
     type Item=ButtonPosesIter<'a>;
     fn next(&mut self)->Option<Self::Item>{
         match self.digit_iter.next(){
             None=>None,
-            Some((index,Some(digit)))=>{
+            Some((index,&digit))=>{
+                let ff = match digit{
+                    Some(digit)=>{
+                        self.table.lookup_digit(digit)
+                    },
+                    None=>{
+                        self.table.lookup_digit(10)
+                    }
+                };
                 let spacing=self.spacing;
                 let topleft=vec2(self.top_left.x+(index as f32)*self.digit_spacing,self.top_left.y);
-                Some(ButtonPosesIter{poses:digit.get().iter(),topleft,spacing})
+                Some(ButtonPosesIter{poses:ff.into_inner().iter(),topleft,spacing})
             },
             _=>{
                 unreachable!()
@@ -142,26 +163,31 @@ pub enum PinEnterResult{
     Fail,
     NotDoneYet
 }
-pub struct PinCode<'a>{
+pub struct PinCode{
     key:[u8;4],
-    digits:[Option<digit::Digit<'a>>;4],
+    digits:[Option<u8>;4],
     top_left:Vec2<f32>,
     digit_spacing:f32,
     pixel_spacing:f32
 }
 
-impl<'a> PinCode<'a>{
-    pub fn iter(&self)->PinDigitIter{
+impl PinCode{
+    pub fn new(top_left:Vec2<f32>,digit_spacing:f32,pixel_spacing:f32)->PinCode{
+        PinCode{key:[1,6,1,6],digits:[None,None,None,None],top_left,digit_spacing,pixel_spacing}
+    }
+    pub fn iter<'a>(&'a self,table:&'a DigitSymbolTable)->PinDigitIter<'a>{
         PinDigitIter{
+            table,
             digit_iter:self.digits.iter().enumerate(),
             digit_spacing:self.digit_spacing,
             top_left:self.top_left,
             spacing:self.pixel_spacing}
     }
-    pub fn add(&mut self,digit:u8,table:&'a digit::DigitSymbolTable)->PinEnterResult{
+    pub fn add(&mut self,digit:u8)->PinEnterResult{
+        assert!(digit>=0 && digit<10);
         for a in self.digits.iter_mut(){
             if a.is_none(){
-                *a=Some(table.lookup_digit(digit));
+                *a=Some(digit);
             }
         }
 
@@ -170,7 +196,7 @@ impl<'a> PinCode<'a>{
             return PinEnterResult::NotDoneYet
         }
 
-        if self.digits.iter().zip(self.key.iter()).all(|(a,b)|a.as_ref().unwrap().num()==*b){
+        if self.digits.iter().zip(self.key.iter()).all(|(a,b)|a.unwrap() ==*b){
             PinEnterResult::Open
         }else{
             for a in self.digits.iter_mut(){
