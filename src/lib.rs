@@ -158,6 +158,10 @@ impl<'a> Iterator for PinDigitIter<'a>{
 }
 
 
+
+
+
+#[derive(Copy,Clone)]
 pub enum PinEnterResult{
     Open,
     Fail,
@@ -183,6 +187,13 @@ impl PinCode{
             top_left:self.top_left,
             spacing:self.pixel_spacing}
     }
+
+    pub fn reset(&mut self){
+        for a in self.digits.iter_mut(){
+           *a=None;
+        }
+    }
+
     pub fn add(&mut self,digit:u8)->PinEnterResult{
         assert!(digit>=0 && digit<10);
         for a in self.digits.iter_mut(){
@@ -200,9 +211,6 @@ impl PinCode{
         if self.digits.iter().zip(self.key.iter()).all(|(a,b)|a.unwrap() ==*b){
             PinEnterResult::Open
         }else{
-            for a in self.digits.iter_mut(){
-                *a=None;
-            }
             PinEnterResult::Fail
         }
 
