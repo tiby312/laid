@@ -8,4 +8,4 @@ edition = "2018"
 
 [dependencies]
 axgeom="1.2.1"
-ascii_num={path="../ascii_num"}
+ascii_num={git="https://github.com/tiby312/ascii_num.git"}
