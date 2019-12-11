@@ -61,7 +61,7 @@ impl Button{
     }
 
     pub fn iter<'a>(&'a self,table:&'a symbol::SymbolTable)->ButtonPosesIter<'a>{
-        let topleft=vec2(self.dim.x.left,self.dim.y.left);
+        let topleft=self.dim.top_start();
         let k=table.lookup(self.symbol);
         ButtonPosesIter{poses:k.into_inner().iter(),topleft,spacing:self.spacing}
     }

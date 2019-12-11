@@ -7,5 +7,5 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-axgeom="1.2.1"
+axgeom="1.4"
 ascii_num={git="https://github.com/tiby312/ascii_num.git"}
